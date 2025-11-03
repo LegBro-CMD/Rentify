@@ -1,43 +1,50 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Search, ListFilter as Filter, MapPin, Users, Bed, Bath, Star } from 'lucide-react';
-import axios from 'axios';
+import { Search, ListFilter as Filter, MapPin, Users, Bed, Bath, Star, Heart } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import api from '../utils/api';
 
 const ListingsPage = () => {
+  const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
-    search: '',
+    city: '',
     minPrice: '',
     maxPrice: '',
     propertyType: '',
-    amenities: [],
-    sort: 'createdAt',
-    order: 'desc'
+    amenities: []
   });
-
   const [showFilters, setShowFilters] = useState(false);
 
+  // Fetch listings with search and filters
   const { data: listingsData, isLoading, error } = useQuery(
-    ['listings', filters],
+    ['listings', searchTerm, filters],
     async () => {
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && value !== '') {
-          if (Array.isArray(value)) {
-            value.forEach(v => params.append(key, v));
-          } else {
-            params.append(key, value);
-          }
-        }
-      });
+      if (searchTerm) params.append('search', searchTerm);
+      if (filters.city) params.append('city', filters.city);
+      if (filters.minPrice) params.append('minPrice', filters.minPrice);
+      if (filters.maxPrice) params.append('maxPrice', filters.maxPrice);
+      if (filters.propertyType) params.append('propertyType', filters.propertyType);
+      if (filters.amenities.length > 0) {
+        filters.amenities.forEach(amenity => params.append('amenities', amenity));
+      }
       
-      const response = await axios.get(`/api/listings?${params}`);
+      const response = await api.get(`/api/listings?${params}`);
       return response.data;
     },
     {
-      keepPreviousData: true
+      staleTime: 5 * 60 * 1000, // 5 minutes
     }
   );
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0
+    }).format(price);
+  };
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
@@ -55,12 +62,15 @@ const ListingsPage = () => {
     }));
   };
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      minimumFractionDigits: 0
-    }).format(price);
+  const clearFilters = () => {
+    setFilters({
+      city: '',
+      minPrice: '',
+      maxPrice: '',
+      propertyType: '',
+      amenities: []
+    });
+    setSearchTerm('');
   };
 
   const amenityOptions = [
@@ -68,93 +78,74 @@ const ListingsPage = () => {
     'Pool', 'Gym', 'Balcony', 'Laundry'
   ];
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            Something went wrong
-          </h2>
-          <p className="text-gray-600">
-            {error.response?.data?.message || 'Failed to load listings'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Browse Properties
-          </h1>
-          <p className="text-gray-600">
-            Find your perfect rental space from our curated collection
-          </p>
-        </div>
-      </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">Browse Properties</h1>
+          
+          {/* Search Bar */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search by location, title, or description..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+            
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center space-x-2 px-6 py-3 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              <Filter className="w-5 h-5" />
+              <span>Filters</span>
+            </button>
+          </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Filters Sidebar */}
-          <div className="lg:w-80">
-            <div className="bg-white rounded-xl shadow-md p-6 sticky top-24">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <Filter className="w-5 h-5 mr-2 text-emerald-600" />
-                  Filters
-                </h2>
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="lg:hidden btn-secondary text-sm"
-                >
-                  {showFilters ? 'Hide' : 'Show'}
-                </button>
-              </div>
-
-              <div className={`space-y-6 ${showFilters ? 'block' : 'hidden lg:block'}`}>
-                {/* Search */}
+          {/* Filters Panel */}
+          {showFilters && (
+            <div className="mt-6 p-6 bg-gray-50 rounded-lg space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="form-label">Search</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Location or property name"
-                      value={filters.search}
-                      onChange={(e) => handleFilterChange('search', e.target.value)}
-                      className="form-input pl-10"
-                    />
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                  <input
+                    type="text"
+                    placeholder="Enter city"
+                    value={filters.city}
+                    onChange={(e) => handleFilterChange('city', e.target.value)}
+                    className="form-input"
+                  />
                 </div>
-
-                {/* Price Range */}
+                
                 <div>
-                  <label className="form-label">Price Range</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      placeholder="Min"
-                      value={filters.minPrice}
-                      onChange={(e) => handleFilterChange('minPrice', e.target.value)}
-                      className="form-input"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Max"
-                      value={filters.maxPrice}
-                      onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
-                      className="form-input"
-                    />
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Min Price</label>
+                  <input
+                    type="number"
+                    placeholder="₱0"
+                    value={filters.minPrice}
+                    onChange={(e) => handleFilterChange('minPrice', e.target.value)}
+                    className="form-input"
+                  />
                 </div>
-
-                {/* Property Type */}
+                
                 <div>
-                  <label className="form-label">Property Type</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Max Price</label>
+                  <input
+                    type="number"
+                    placeholder="₱10000"
+                    value={filters.maxPrice}
+                    onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
+                    className="form-input"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Property Type</label>
                   <select
                     value={filters.propertyType}
                     onChange={(e) => handleFilterChange('propertyType', e.target.value)}
@@ -168,155 +159,146 @@ const ListingsPage = () => {
                     <option value="loft">Loft</option>
                   </select>
                 </div>
+              </div>
 
-                {/* Amenities */}
-                <div>
-                  <label className="form-label">Amenities</label>
-                  <div className="space-y-2">
-                    {amenityOptions.map(amenity => (
-                      <label key={amenity} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={filters.amenities.includes(amenity)}
-                          onChange={() => handleAmenityToggle(amenity)}
-                          className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">{amenity}</span>
-                      </label>
-                    ))}
-                  </div>
+              {/* Amenities */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Amenities</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {amenityOptions.map(amenity => (
+                    <label key={amenity} className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={filters.amenities.includes(amenity)}
+                        onChange={() => handleAmenityToggle(amenity)}
+                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-gray-700">{amenity}</span>
+                    </label>
+                  ))}
                 </div>
+              </div>
 
-                {/* Sort */}
-                <div>
-                  <label className="form-label">Sort By</label>
-                  <select
-                    value={`${filters.sort}-${filters.order}`}
-                    onChange={(e) => {
-                      const [sort, order] = e.target.value.split('-');
-                      handleFilterChange('sort', sort);
-                      handleFilterChange('order', order);
-                    }}
-                    className="form-input"
-                  >
-                    <option value="createdAt-desc">Newest First</option>
-                    <option value="price-asc">Price: Low to High</option>
-                    <option value="price-desc">Price: High to Low</option>
-                    <option value="rating-desc">Highest Rated</option>
-                  </select>
-                </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Clear All Filters
+                </button>
               </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Listings Grid */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner size="lg" />
           </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Error Loading Properties
+            </h3>
+            <p className="text-gray-600">
+              Please try again later or contact support if the problem persists.
+            </p>
+          </div>
+        ) : listingsData?.data?.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🏠</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              No Properties Found
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Try adjusting your search criteria or filters.
+            </p>
+            <button
+              onClick={clearFilters}
+              className="btn-primary"
+            >
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-gray-600">
+                {listingsData?.data?.length} propert{listingsData?.data?.length !== 1 ? 'ies' : 'y'} found
+              </p>
+            </div>
 
-          {/* Listings Grid */}
-          <div className="flex-1">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <LoadingSpinner size="lg" />
-              </div>
-            ) : (
-              <>
-                <div className="mb-6">
-                  <p className="text-gray-600">
-                    {listingsData?.data?.length || 0} properties found
-                  </p>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {listingsData?.data?.map((listing) => (
+                <Link
+                  key={listing._id}
+                  to={`/listings/${listing._id}`}
+                  className="group"
+                >
+                  <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform group-hover:-translate-y-1">
+                    <div className="relative h-48">
+                      <img
+                        src={listing.images?.[0]?.url || 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg'}
+                        alt={listing.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <button className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-full shadow-md transition-colors">
+                        <Heart className="w-4 h-4 text-gray-600 hover:text-red-500" />
+                      </button>
+                      <div className="absolute top-3 left-3 bg-black/70 text-white px-2 py-1 rounded-lg flex items-center space-x-1">
+                        <Star className="w-3 h-3 text-yellow-400 fill-current" />
+                        <span className="text-sm">{listing.rating}</span>
+                      </div>
+                    </div>
 
-                {listingsData?.data?.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="text-6xl mb-4">🏠</div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      No properties found
-                    </h3>
-                    <p className="text-gray-600">
-                      Try adjusting your filters to see more results
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {listingsData?.data?.map((listing) => (
-                      <div
-                        key={listing._id}
-                        className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer"
-                      >
-                        <div className="relative h-48">
-                          <img
-                            src={listing.images?.[0]?.url || 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg'}
-                            alt={listing.title}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg">
-                            <span className="text-emerald-600 font-semibold">
-                              {formatPrice(listing.price)}
-                            </span>
-                            <span className="text-gray-500 text-sm">/night</span>
+                    <div className="p-4">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-1 group-hover:text-emerald-600 transition-colors">
+                        {listing.title}
+                      </h3>
+                      
+                      <div className="flex items-center text-gray-600 mb-3">
+                        <MapPin className="w-4 h-4 mr-1 text-emerald-600" />
+                        <span className="text-sm">{listing.location}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center">
+                            <Bed className="w-4 h-4 mr-1 text-emerald-600" />
+                            <span>{listing.bedrooms}</span>
                           </div>
-                          <div className="absolute top-3 left-3 bg-black/70 text-white px-2 py-1 rounded-lg flex items-center space-x-1">
-                            <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                            <span className="text-sm">{listing.rating}</span>
+                          <div className="flex items-center">
+                            <Bath className="w-4 h-4 mr-1 text-emerald-600" />
+                            <span>{listing.bathrooms}</span>
                           </div>
-                        </div>
-
-                        <div className="p-6">
-                          <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-1">
-                            {listing.title}
-                          </h3>
-                          
-                          <div className="flex items-center text-gray-600 mb-3">
-                            <MapPin className="w-4 h-4 mr-1 text-emerald-600" />
-                            <span className="text-sm">{listing.location}</span>
+                          <div className="flex items-center">
+                            <Users className="w-4 h-4 mr-1 text-emerald-600" />
+                            <span>{listing.maxGuests}</span>
                           </div>
-
-                          <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                            {listing.description}
-                          </p>
-
-                          <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
-                            <div className="flex items-center space-x-4">
-                              <div className="flex items-center">
-                                <Bed className="w-4 h-4 mr-1 text-emerald-600" />
-                                <span>{listing.bedrooms}</span>
-                              </div>
-                              <div className="flex items-center">
-                                <Bath className="w-4 h-4 mr-1 text-emerald-600" />
-                                <span>{listing.bathrooms}</span>
-                              </div>
-                              <div className="flex items-center">
-                                <Users className="w-4 h-4 mr-1 text-emerald-600" />
-                                <span>{listing.maxGuests}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1 mb-4">
-                            {listing.amenities?.slice(0, 3).map((amenity, index) => (
-                              <span
-                                key={index}
-                                className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full text-xs"
-                              >
-                                {amenity}
-                              </span>
-                            ))}
-                            {listing.amenities?.length > 3 && (
-                              <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
-                                +{listing.amenities.length - 3} more
-                              </span>
-                            )}
-                          </div>
-
-                          <button className="w-full btn-primary">
-                            View Details
-                          </button>
                         </div>
                       </div>
-                    ))}
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-lg font-semibold text-emerald-600">
+                          {formatPrice(listing.price)}
+                          <span className="text-sm text-gray-500">/night</span>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {listing.reviewCount} reviews
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+                </Link>
+              ))}
+            </div>
+
+            {/* Pagination would go here if needed */}
+          </>
+        )}
       </div>
     </div>
   );

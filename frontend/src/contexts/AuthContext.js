@@ -1,68 +1,74 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Initialize user from localStorage
+  const [user, setUserState] = useState(() => {
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setTokenState] = useState(localStorage.getItem('token'));
 
-  // Set axios default headers
-  useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  // Centralized setter for user to also update localStorage
+  const setUser = (updatedUser) => {
+    setUserState(updatedUser);
+    if (updatedUser) {
+      localStorage.setItem('user', JSON.stringify(updatedUser));
     } else {
-      delete axios.defaults.headers.common['Authorization'];
+      localStorage.removeItem('user');
     }
-  }, [token]);
+  };
 
-  // Check if user is logged in on app start
+  const setToken = (newToken) => {
+    setTokenState(newToken);
+    if (newToken) {
+      localStorage.setItem('token', newToken);
+    } else {
+      localStorage.removeItem('token');
+    }
+  };
+
+  // Check auth on app start
   useEffect(() => {
     const checkAuth = async () => {
       if (token) {
         try {
-          const response = await axios.get('/api/auth/me');
+          const response = await api.get('/api/auth/me');
           if (response.data.success) {
             setUser(response.data.data.user);
           } else {
-            // Invalid token
-            localStorage.removeItem('token');
+            setUser(null);
             setToken(null);
           }
         } catch (error) {
-          console.error('Auth check failed:', error);
-          localStorage.removeItem('token');
+          console.error('Auth check failed:', error.response?.data || error.message);
+          setUser(null);
           setToken(null);
         }
       }
       setLoading(false);
     };
-
     checkAuth();
   }, [token]);
 
+  // Login
   const login = async (email, password) => {
     try {
-      const response = await axios.post('/api/auth/login', {
-        email,
-        password
-      });
-
+      const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
         const { user, token } = response.data.data;
         setUser(user);
         setToken(token);
-        localStorage.setItem('token', token);
         toast.success('Login successful!');
         return { success: true };
       } else {
@@ -76,15 +82,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Register
   const register = async (userData) => {
     try {
-      const response = await axios.post('/api/auth/register', userData);
-
+      const response = await api.post('/api/auth/register', userData);
       if (response.data.success) {
         const { user, token } = response.data.data;
         setUser(user);
         setToken(token);
-        localStorage.setItem('token', token);
         toast.success('Registration successful!');
         return { success: true };
       } else {
@@ -98,26 +103,32 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Logout
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
     toast.success('Logged out successfully');
   };
 
-  const value = {
-    user,
-    token,
-    loading,
-    login,
-    register,
-    logout,
-    isAuthenticated: !!user
+  // Update user (for profile changes or avatar)
+  const updateUser = (updatedData) => {
+    const newUser = { ...user, ...updatedData };
+    setUser(newUser);
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        login,
+        register,
+        logout,
+        updateUser,
+        isAuthenticated: !!user
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -167,6 +167,7 @@ router.get('/me', auth, async (req, res) => {
           id: user._id,
           name: user.fullName,
           email: user.email,
+          phone: user.phone,
           role: user.role
         }
       }
@@ -180,5 +181,153 @@ router.get('/me', auth, async (req, res) => {
     });
   }
 });
+
+// @route   PUT /api/auth/me
+// @desc    Update user profile
+// @access  Private
+router.put('/me', auth, [
+  body('firstName').optional().trim().notEmpty().withMessage('First name cannot be empty'),
+  body('lastName').optional().trim().notEmpty().withMessage('Last name cannot be empty'),
+  body('email').optional().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('phone').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { firstName, lastName, email, phone, bio } = req.body;
+
+    // Check if email is already taken by another user
+    if (email) {
+      const existingUser = await User.findOne({ 
+        email, 
+        _id: { $ne: req.user.userId } 
+      });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email is already taken'
+        });
+      }
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.userId,
+      { firstName, lastName, email, phone, bio },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        user: updatedUser
+      }
+    });
+
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during profile update'
+    });
+  }
+});
+
+// @route   PUT /api/auth/change-password
+// @desc    Change user password
+// @access  Private
+router.put('/change-password', auth, [
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during password change'
+    });
+  }
+});
+
+// @route   GET /api/auth/users
+// @desc    Get all users (admin only)
+// @access  Private (admin)
+router.get('/users', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.userId);
+
+    // Check if the current user is an admin
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admins only.'
+      });
+    }
+
+    const users = await User.find().select('-password');
+    res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error('Fetch users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching users'
+    });
+  }
+});
+
 
 module.exports = router;

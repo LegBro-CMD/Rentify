@@ -58,10 +58,11 @@ router.post('/images', upload.array('images', 10), (req, res) => {
     }
 
     const uploadedFiles = req.files.map((file, index) => ({
-      url: `/uploads/listings/${file.filename}`,
-      isPrimary: index === 0,
-      sortOrder: index
-    }));
+  url: `${req.protocol}://${req.get('host')}/uploads/listings/${file.filename}`,
+  isPrimary: index === 0,
+  sortOrder: index
+}));
+
 
     res.json({
       success: true,

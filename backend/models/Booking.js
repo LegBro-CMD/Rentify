@@ -1,9 +1,18 @@
 const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
   listing: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Listing',
+    required: true
+  },
+  host: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
   guest: {
@@ -46,7 +55,7 @@ const bookingSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'cancelled', 'completed'],
+    enum: ['pending', 'confirmed', 'cancelled', 'completed', 'refunded'],
     default: 'pending'
   },
   contractSigned: {

@@ -1,6 +1,23 @@
 const mongoose = require('mongoose');
 
+const reviewSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userName: { type: String, required: true },
+  rating: { type: Number, required: true, min: 1, max: 5 },
+  comment: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+
 const listingSchema = new mongoose.Schema({
+  host: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  phone: {
+    type: String,
+    default: ""
+  },
   title: {
     type: String,
     required: [true, 'Title is required'],
@@ -15,7 +32,7 @@ const listingSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: [true, 'Address is required'],
+    required: false,
     trim: true
   },
   city: {
@@ -31,7 +48,7 @@ const listingSchema = new mongoose.Schema({
   },
   location: {
     type: String,
-    required: true
+    required: false
   },
   price: {
     type: Number,
@@ -96,6 +113,8 @@ const listingSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  reviews: [reviewSchema],
+  
   status: {
     type: String,
     enum: ['active', 'inactive', 'pending'],

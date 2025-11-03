@@ -5,15 +5,26 @@
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "cd backend && npm run dev",
+    "server": "cd backend && npm start",
     "client": "cd frontend && npm start",
-    "build": "cd frontend && npm run build",
+    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
     "install-deps": "npm install && cd backend && npm install && cd ../frontend && npm install"
   },
-  "keywords": ["rental", "property", "mern", "react", "nodejs"],
+  "keywords": [
+    "rental",
+    "property",
+    "mern",
+    "react",
+    "nodejs"
+  ],
   "author": "Rentify Team",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.5",
+    "lucide-react": "^0.545.0",
+    "recharts": "^3.2.1"
   }
 }

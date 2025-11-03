@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { X, Upload, Plus, Minus } from 'lucide-react';
+import { X, Upload } from 'lucide-react';
 import { useMutation } from 'react-query';
-import axios from 'axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import api from '../../utils/api';
 
 const CreateListingModal = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     address: '',
-    city: '',
+    city: 'Manila, Makati',
     country: 'Philippines',
     price: '',
     bedrooms: 1,
@@ -18,6 +18,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
     maxGuests: 1,
     propertyType: 'apartment',
     hostName: '',
+    phone: '',
     amenities: [],
     images: []
   });
@@ -37,19 +38,19 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
       // First upload images if any
       let uploadedImages = [];
       if (imageFiles.length > 0) {
-        const formData = new FormData();
-        imageFiles.forEach(file => {
-          formData.append('images', file);
-        });
-        
-        const uploadResponse = await axios.post('/api/upload/images', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        uploadedImages = uploadResponse.data.data;
-      }
+  const imageFormData = new FormData();
+  imageFiles.forEach(file => {
+    imageFormData.append('images', file);
+  });
+
+  const uploadResponse = await api.post('/api/upload/images', imageFormData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  uploadedImages = uploadResponse.data.data;
+}
 
       // Then create listing with image URLs
-      const response = await axios.post('/api/listings', {
+      const response = await api.post('/api/listings', {
         ...listingData,
         images: uploadedImages
       });
@@ -82,6 +83,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
     }
   };
 
+ 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 10) {
@@ -137,6 +139,11 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
     if (!formData.hostName.trim()) {
       newErrors.hostName = 'Host name is required';
     }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^[0-9]{10,15}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Enter a Valid phone number';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -184,7 +191,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                 className={`form-input ${errors.title ? 'border-red-500' : ''}`}
               />
               {errors.title && <p className="form-error">{errors.title}</p>}
-              }
+              
             </div>
 
             <div>
@@ -198,7 +205,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                 className={`form-input ${errors.description ? 'border-red-500' : ''}`}
               />
               {errors.description && <p className="form-error">{errors.description}</p>}
-              }
+              
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -229,8 +236,21 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                   className={`form-input ${errors.hostName ? 'border-red-500' : ''}`}
                 />
                 {errors.hostName && <p className="form-error">{errors.hostName}</p>}
-                }
+                
               </div>
+              <div>
+              <label className="form-label">Phone Number</label>
+              <input
+               type="text"
+               name="phone"
+               value={formData.phone}
+               onChange={handleChange}
+               placeholder="e.g., 09171234567"
+               className={`form-input ${errors.phone ? 'border-red-500' : ''}`}
+               />
+              {errors.phone && <p className="form-error">{errors.phone}</p>}
+              </div>
+
             </div>
           </div>
 
@@ -249,7 +269,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                 className={`form-input ${errors.address ? 'border-red-500' : ''}`}
               />
               {errors.address && <p className="form-error">{errors.address}</p>}
-              }
+              
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -264,7 +284,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                   className={`form-input ${errors.city ? 'border-red-500' : ''}`}
                 />
                 {errors.city && <p className="form-error">{errors.city}</p>}
-                }
+                
               </div>
 
               <div>
@@ -297,7 +317,7 @@ const CreateListingModal = ({ onClose, onSuccess }) => {
                   className={`form-input ${errors.price ? 'border-red-500' : ''}`}
                 />
                 {errors.price && <p className="form-error">{errors.price}</p>}
-                }
+                
               </div>
 
               <div>

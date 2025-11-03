@@ -30,6 +30,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  bio: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Bio cannot exceed 500 characters']
+  },
   avatar: {
     type: String,
     default: null
@@ -46,7 +51,11 @@ const userSchema = new mongoose.Schema({
   lastLogin: {
     type: Date,
     default: null
-  }
+  },
+  favorites: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Listing'
+  }]
 }, {
   timestamps: true
 });
@@ -83,5 +92,7 @@ userSchema.set('toJSON', {
     return ret;
   }
 });
+
+
 
 module.exports = mongoose.model('User', userSchema);

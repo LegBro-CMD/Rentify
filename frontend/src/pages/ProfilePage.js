@@ -1,76 +1,113 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { User, Mail, Phone, Calendar, MapPin, Star, CreditCard as Edit, Save, X, Camera, Heart, Hop as Home, Clock } from 'lucide-react';
+import { User, Calendar, MapPin, Star, Edit, Save, X, Camera, Heart, Eye } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import api, { updateProfile } from '../utils/api';
+import { useNavigate } from 'react-router-dom';
+
+axios.defaults.baseURL = 'http://localhost:5000';
 
 const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, updateUser, loading: authLoading } = useAuth(); // ✅ Get updateUser from context
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('profile');
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef(null);
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
-    bio: ''
+    bio: '',
+    avatar: ''
   });
 
-  // Fetch user profile
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+
   const { data: profile, isLoading: profileLoading } = useQuery(
-    'user-profile',
+    ['user-profile', user?._id],
     async () => {
-      const response = await axios.get('/api/auth/me');
+      const response = await api.get('/api/auth/me');
       return response.data.data.user;
     },
     {
+      enabled: !!user,
       onSuccess: (data) => {
         setFormData({
           firstName: data.firstName || '',
           lastName: data.lastName || '',
           email: data.email || '',
           phone: data.phone || '',
-          bio: data.bio || ''
+          bio: data.bio || '',
+          avatar: data.avatar || ''
         });
       }
     }
   );
 
-  // Fetch user bookings
   const { data: bookingsData, isLoading: bookingsLoading } = useQuery(
-    'user-bookings',
+    ['user-bookings', user?._id],
     async () => {
       const response = await axios.get('/api/bookings');
       return response.data;
-    }
+    },
+    { enabled: !!user }
   );
 
-  // Fetch user favorites (mock for now)
   const { data: favoritesData, isLoading: favoritesLoading } = useQuery(
-    'user-favorites',
+    ['user-favorites', user?._id],
     async () => {
-      // This would be a real API call
-      return { data: [] };
-    }
+      const response = await api.get('/api/favorites');
+      return response.data;
+    },
+    { enabled: !!user }
   );
 
-  // Update profile mutation
-  const updateProfileMutation = useMutation(
-    async (profileData) => {
-      const response = await axios.put('/api/auth/profile', profileData);
+  const updateProfileMutation = useMutation(updateProfile, {
+    onSuccess: (data) => {
+      toast.success('Profile updated successfully!');
+      const updatedUser = data.data?.user;
+      if (updatedUser) {
+        setFormData({
+          firstName: updatedUser.firstName || '',
+          lastName: updatedUser.lastName || '',
+          email: updatedUser.email || '',
+          phone: updatedUser.phone || '',
+          bio: updatedUser.bio || '',
+          avatar: updatedUser.avatar || ''
+        });
+      }
+      setIsEditing(false);
+      queryClient.invalidateQueries(['user-profile', user?._id]);
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    },
+  });
+
+  const changePasswordMutation = useMutation(
+    async (passwordData) => {
+      const response = await api.put('/api/auth/change-password', passwordData);
       return response.data;
     },
     {
       onSuccess: () => {
-        toast.success('Profile updated successfully!');
-        setIsEditing(false);
-        queryClient.invalidateQueries('user-profile');
+        toast.success('Password changed successfully!');
+        setShowPasswordModal(false);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       },
       onError: (error) => {
-        toast.error(error.response?.data?.message || 'Failed to update profile');
+        toast.error(error.response?.data?.message || 'Failed to change password');
       }
     }
   );
@@ -84,8 +121,11 @@ const ProfilePage = () => {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    updateProfileMutation.mutate(formData);
+    if (e) e.preventDefault();
+    const filteredData = Object.fromEntries(
+      Object.entries(formData).filter(([key, v]) => key !== 'avatar' && v && v.trim() !== '')
+    );
+    updateProfileMutation.mutate(filteredData);
   };
 
   const handleCancel = () => {
@@ -94,26 +134,82 @@ const ProfilePage = () => {
       lastName: profile?.lastName || '',
       email: profile?.email || '',
       phone: profile?.phone || '',
-      bio: profile?.bio || ''
+      bio: profile?.bio || '',
+      avatar: profile?.avatar || ''
     });
     setIsEditing(false);
   };
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+  // ✅ CRITICAL: Handle avatar upload with full persistence
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size should be less than 5MB');
+      return;
+    }
+
+    const uploadFormData = new FormData();
+    uploadFormData.append('avatar', file);
+
+    try {
+      const loadingToast = toast.loading('Uploading profile picture...');
+
+      const res = await api.put('/api/users/update-avatar', uploadFormData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      toast.dismiss(loadingToast);
+
+      if (res.data.success) {
+        toast.success('Profile picture updated!');
+        
+        const newAvatar = res.data.user.avatar;
+
+        // ✅ 1. Update React Query cache
+        queryClient.setQueryData(['user-profile', user?._id], (oldData) => ({
+          ...oldData,
+          avatar: newAvatar,
+        }));
+
+        // ✅ 2. Update local formData state
+        setFormData((prev) => ({
+          ...prev,
+          avatar: newAvatar,
+        }));
+
+        // ✅ 3. Update AuthContext user state & localStorage (all in one call!)
+        updateUser({ avatar: newAvatar });
+
+        // ✅ 4. Force refetch to ensure data is fresh
+        queryClient.invalidateQueries(['user-profile', user?._id]);
+        
+      } else {
+        toast.error('Failed to update avatar.');
+      }
+    } catch (err) {
+      toast.dismiss();
+      console.error('Avatar upload error:', err);
+      toast.error(err.response?.data?.message || 'Upload failed');
+    }
+
+    // Reset file input
+    e.target.value = '';
   };
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-PH', {
-      style: 'currency',
-      currency: 'PHP',
-      minimumFractionDigits: 0
-    }).format(price);
-  };
+  const formatDate = (date) =>
+    new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 }).format(price);
 
   const getStatusBadge = (status) => {
     const styles = {
@@ -122,12 +218,24 @@ const ProfilePage = () => {
       cancelled: 'bg-red-100 text-red-800',
       completed: 'bg-green-100 text-green-800'
     };
-
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.pending}`}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
+  };
+
+  // ✅ Get avatar URL with proper fallback
+  const getAvatarUrl = () => {
+    // Priority: formData > profile > user from context
+    const avatarPath = formData.avatar || profile?.avatar || user?.avatar;
+    if (!avatarPath) return null;
+    
+    // If avatar already has full URL, return it
+    if (avatarPath.startsWith('http')) return avatarPath;
+    
+    // Otherwise prepend base URL
+    return `http://localhost:5000${avatarPath}`;
   };
 
   const tabs = [
@@ -151,16 +259,40 @@ const ProfilePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center space-x-6">
             <div className="relative">
-              <div className="w-24 h-24 bg-gradient-to-r from-emerald-600 to-emerald-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">
-                  {profile?.firstName?.charAt(0) || 'U'}
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-r from-emerald-600 to-emerald-500 flex items-center justify-center">
+                {getAvatarUrl() ? (
+                  <img
+                    src={getAvatarUrl()}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Hide image and show initials on error
+                      e.target.style.display = 'none';
+                      const fallback = e.target.parentElement.querySelector('.fallback-initial');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <span 
+                  className="fallback-initial text-white font-bold text-2xl w-full h-full flex items-center justify-center absolute top-0 left-0"
+                  style={{ display: getAvatarUrl() ? 'none' : 'flex' }}
+                >
+                  {profile?.firstName?.charAt(0)?.toUpperCase() || user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
                 </span>
               </div>
-              <button className="absolute bottom-0 right-0 bg-white rounded-full p-2 shadow-lg hover:shadow-xl transition-shadow">
-                <Camera className="w-4 h-4 text-gray-600" />
-              </button>
+
+              
+
+              {/* Hidden File Input */}
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleAvatarUpload}
+              />
             </div>
-            
+
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900">
                 {profile?.firstName} {profile?.lastName}
@@ -238,6 +370,7 @@ const ProfilePage = () => {
                         onClick={handleSubmit}
                         disabled={updateProfileMutation.isLoading}
                         className="btn-primary flex items-center space-x-2"
+                        type="button"
                       >
                         {updateProfileMutation.isLoading ? (
                           <LoadingSpinner size="sm" />
@@ -260,6 +393,7 @@ const ProfilePage = () => {
                         value={formData.firstName}
                         onChange={handleChange}
                         disabled={!isEditing}
+                        required
                         className={`form-input ${!isEditing ? 'bg-gray-50' : ''}`}
                       />
                     </div>
@@ -271,6 +405,7 @@ const ProfilePage = () => {
                         value={formData.lastName}
                         onChange={handleChange}
                         disabled={!isEditing}
+                        required
                         className={`form-input ${!isEditing ? 'bg-gray-50' : ''}`}
                       />
                     </div>
@@ -284,6 +419,7 @@ const ProfilePage = () => {
                       value={formData.email}
                       onChange={handleChange}
                       disabled={!isEditing}
+                      required
                       className={`form-input ${!isEditing ? 'bg-gray-50' : ''}`}
                     />
                   </div>
@@ -357,14 +493,11 @@ const ProfilePage = () => {
                   Account Settings
                 </h3>
                 <div className="space-y-3">
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
+                  <button 
+                    onClick={() => setShowPasswordModal(true)}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
                     Change Password
-                  </button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
-                    Notification Settings
-                  </button>
-                  <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
-                    Privacy Settings
                   </button>
                   <button className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                     Delete Account
@@ -448,20 +581,140 @@ const ProfilePage = () => {
 
         {/* Favorites Tab */}
         {activeTab === 'favorites' && (
-          <div className="text-center py-12">
-            <Heart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              No Favorites Yet
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Save properties you love to easily find them later.
-            </p>
-            <button className="btn-primary">
-              Browse Properties
-            </button>
+          <div>
+            {favoritesLoading ? (
+              <div className="text-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : !favoritesData?.data?.length ? (
+              <div className="text-center py-12">
+                <Heart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  No Favorites Yet
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Save properties you love to easily find them later.
+                </p>
+                <button className="btn-primary">Browse Properties</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {favoritesData.data.map((listing) => (
+                  <div key={listing._id} className="bg-white rounded-xl shadow-md overflow-hidden">
+                    <img
+                      src={listing.images?.[0]?.url || 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg'}
+                      alt={listing.title}
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="p-6">
+                      <h3 className="font-semibold text-gray-900 mb-2">{listing.title}</h3>
+                      <p className="text-gray-600 text-sm mb-4">{listing.location}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg font-semibold text-emerald-600">
+                          ₱{listing.price?.toLocaleString()}
+                        </span>
+                        <button 
+                          onClick={() => navigate(`/listing/${listing._id}`)}
+                          className="text-emerald-600 hover:text-emerald-900"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div className="modal-overlay animate-fade-in" onClick={() => setShowPasswordModal(false)}>
+          <div 
+            className="modal-content animate-scale-in max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Change Password
+              </h2>
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (passwordData.newPassword !== passwordData.confirmPassword) {
+                  toast.error('New passwords do not match');
+                  return;
+                }
+                changePasswordMutation.mutate(passwordData);
+              }}
+              className="p-6 space-y-4"
+            >
+              <div>
+                <label className="form-label">Current Password</label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="form-label">New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                  className="form-input"
+                  minLength="6"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="form-label">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="form-input"
+                  minLength="6"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end space-x-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={changePasswordMutation.isLoading}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  {changePasswordMutation.isLoading && <LoadingSpinner size="sm" />}
+                  <span>Change Password</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,9 +1,21 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const Listing = require('../models/Listing');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/listings'),
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage });
+
 
 // @route   GET /api/listings
 // @desc    Get all listings
@@ -17,6 +29,7 @@ router.get('/', async (req, res) => {
       maxPrice, 
       propertyType, 
       amenities, 
+      phone,
       sort = 'createdAt',
       order = 'desc',
       page = 1,
@@ -25,6 +38,11 @@ router.get('/', async (req, res) => {
 
     // Build query
     let query = { status: 'active' };
+
+    // If host parameter is provided, filter by host
+    if (req.query.host) {
+      query.host = req.query.host;
+    }
 
     if (search) {
       query.$or = [
@@ -94,13 +112,25 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ✅ Put this BEFORE any '/:id' route
+router.get('/favorites', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).populate('favorites');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.status(200).json({ data: user.favorites });
+  } catch (error) {
+    console.error('Error fetching favorites:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/listings/:id
 // @desc    Get single listing
 // @access  Public
 router.get('/:id', async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id)
-      .populate('host', 'firstName lastName email');
+      .populate('host', 'firstName lastName email phone');
 
     if (!listing) {
       return res.status(404).json({
@@ -161,14 +191,16 @@ router.post('/', auth, [
       propertyType,
       amenities = [],
       images = [],
-      hostName
+      hostName,
+      phone
     } = req.body;
 
-    // Create new listing
+    const location = `${city}, ${country}`;
+
     const listing = new Listing({
       title,
       description,
-      address,
+      location,
       city,
       country,
       price: Number(price),
@@ -179,8 +211,10 @@ router.post('/', auth, [
       amenities,
       images,
       host: req.user.userId,
-      hostName: hostName || 'Host'
+      hostName: hostName || 'Host',
+      phone: phone,
     });
+    
 
     await listing.save();
 
@@ -205,46 +239,47 @@ router.post('/', auth, [
 // @route   PUT /api/listings/:id
 // @desc    Update listing
 // @access  Private
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, upload.array('images', 10), async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
-
-    if (!listing) {
-      return res.status(404).json({
-        success: false,
-        message: 'Listing not found'
-      });
+    if (!listing) return res.status(404).json({ success: false, message: 'Listing not found' });
+    
+    const user = await User.findById(req.user.userId);
+    if (listing.host.toString() !== req.user.userId && user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this listing' });
     }
 
-    // Check if user owns the listing
-    if (listing.host.toString() !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this listing'
-      });
+    // Handle new uploaded images
+    let newImages = listing.images;
+    if (req.files && req.files.length > 0) {
+      const uploaded = req.files.map((file) => ({
+        url: `${req.protocol}://${req.get('host')}/uploads/listings/${file.filename}`,
+      }));
+      newImages = [...newImages, ...uploaded];
     }
 
-    // Update listing
-    const updatedListing = await Listing.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body },
-      { new: true, runValidators: true }
-    ).populate('host', 'firstName lastName');
+    // Merge new data
+    const updatedData = {
+      ...req.body,
+      images: newImages,
+    };
 
-    res.json({
-      success: true,
-      message: 'Listing updated successfully',
-      data: updatedListing
+    if (req.body.phone !== undefined) {
+      updatedData.phone = req.body.phone;
+    }
+
+    const updatedListing = await Listing.findByIdAndUpdate(req.params.id, updatedData, {
+      new: true,
+      runValidators: true,
     });
 
+    res.json({ success: true, message: 'Listing updated successfully', data: updatedListing });
   } catch (error) {
     console.error('Update listing error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while updating listing'
-    });
+    res.status(500).json({ success: false, message: 'Server error while updating listing' });
   }
 });
+
 
 // @route   DELETE /api/listings/:id
 // @desc    Delete listing
@@ -283,5 +318,98 @@ router.delete('/:id', auth, async (req, res) => {
     });
   }
 });
+
+router.post(
+  "/:id/reviews",
+  auth,
+  [
+    body("rating")
+      .isInt({ min: 1, max: 5 })
+      .withMessage("Rating must be between 1 and 5"),
+    body("comment").notEmpty().withMessage("Comment is required"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty())
+        return res.status(400).json({ errors: errors.array() });
+
+      const { rating, comment } = req.body;
+      const listing = await Listing.findById(req.params.id);
+      if (!listing)
+        return res.status(404).json({ message: "Listing not found" });
+
+      // ✅ match middleware structure
+      const newReview = {
+        user: req.user.userId,
+        userName: req.user.email.split("@")[0], // fallback name
+        rating,
+        comment,
+        createdAt: new Date(),
+      };
+
+      listing.reviews.push(newReview);
+
+      listing.reviewCount = listing.reviews.length;
+      listing.rating =
+        listing.reviews.reduce((sum, r) => sum + r.rating, 0) /
+        listing.reviewCount;
+
+      await listing.save();
+      res
+        .status(201)
+        .json({ message: "Review added successfully", reviews: listing.reviews });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+);
+
+
+router.get('/:id/reviews', async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id).select('reviews');
+    if (!listing) return res.status(404).json({ message: 'Listing not found' });
+    res.json(listing.reviews);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/listings/:id/favorite
+// @desc    Toggle favorite listing for the logged-in user
+// @access  Private
+router.post('/:id/favorite', auth, async (req, res) => {
+  try {
+    const listingId = req.params.id;
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const index = user.favorites.indexOf(listingId);
+
+    if (index === -1) {
+      // Add to favorites
+      user.favorites.push(listingId);
+    } else {
+      // Remove from favorites
+      user.favorites.splice(index, 1);
+    }
+
+    await user.save();
+    res.status(200).json({
+      message: index === -1 ? 'Added to favorites' : 'Removed from favorites',
+      favorites: user.favorites
+    });
+  } catch (error) {
+    console.error('Error updating favorites:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 
 module.exports = router;

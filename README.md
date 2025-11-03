@@ -194,7 +194,6 @@ The application comes with sample data including:
 - [ ] Implement admin dashboard with analytics
 - [ ] Add user profile management
 - [ ] Implement real-time notifications
-- [ ] Add payment integration (Stripe/PayPal)
 - [ ] Implement review and rating system
 - [ ] Add map integration for property locations
 - [ ] Implement advanced search with geolocation
