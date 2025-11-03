@@ -3,7 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL:
     process.env.NODE_ENV === 'production'
-      ? 'https://rentify-m636.onrender.com/api' // Render will serve the backend API under this path
+      ? 'https://rentify-m636.onrender.com' // Render will serve the backend API under this path
       : 'http://localhost:5000/api', // Local dev mode
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
