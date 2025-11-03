@@ -115,15 +115,18 @@ app.get("/", (req, res) => {
 });
 
 
-// Serve React build files in production
+const path = require('path');
+
+// Serve frontend build in production
 if (process.env.NODE_ENV === 'production') {
-  const buildPath = path.join(__dirname, 'client', 'build');
+  const buildPath = path.join(__dirname, '../frontend/build');
   app.use(express.static(buildPath));
 
   app.get('*', (req, res) => {
     res.sendFile(path.join(buildPath, 'index.html'));
   });
 }
+
 
 const PORT = process.env.PORT || 5000;
 
