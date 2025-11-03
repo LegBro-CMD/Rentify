@@ -115,22 +115,15 @@ app.get("/", (req, res) => {
 });
 
 
-// 404 handler - MUST be last
-app.use('*', (req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({ 
-    success: false, 
-    message: `API endpoint not found: ${req.method} ${req.originalUrl}`,
-    availableEndpoints: [
-      'GET /test',
-      'GET /api/health',
-      'POST /api/auth/login',
-      'POST /api/auth/register',
-      'GET /api/listings',
-      'GET /api/bookings'
-    ]
+// Serve React build files in production
+if (process.env.NODE_ENV === 'production') {
+  const buildPath = path.join(__dirname, 'client', 'build');
+  app.use(express.static(buildPath));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
   });
-});
+}
 
 const PORT = process.env.PORT || 5000;
 
