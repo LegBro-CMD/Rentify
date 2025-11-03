@@ -21,9 +21,25 @@ const favoriteRoutes = require('./routes/favorites');
 const app = express();
 
 // Security middleware
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: [
+          "'self'",
+          "https://rentify-m636.onrender.com", // ✅ Allow API calls to your Render backend
+          "https://api.render.com", // optional, for Render internal calls
+        ],
+        imgSrc: ["'self'", "data:", "https://rentify-m636.onrender.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
+  })
+);
 
 // Rate limiting
 const limiter = rateLimit({
