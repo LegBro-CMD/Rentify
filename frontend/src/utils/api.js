@@ -1,15 +1,12 @@
 import axios from 'axios';
 
-// Configure axios defaults
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
-// Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL:
+    process.env.NODE_ENV === 'production'
+      ? '/api' // Render will serve the backend API under this path
+      : 'http://localhost:5000/api', // Local dev mode
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 // ✅ Example function: Fetch all users
@@ -18,60 +15,38 @@ export const fetchAllUsers = async () => {
   return response.data.data;
 };
 
-// ✅ NEW: Update user profile
+// ✅ Update user profile
 export const updateProfile = async (userData) => {
-  const response = await api.put('/api/auth/me', userData);
-  return response; // Keep full response for flexibility
+  const response = await api.put('/auth/me', userData);
+  return response;
 };
 
-// ✅ (Optional) Get user profile
+// ✅ Get user profile
 export const getProfile = async () => {
   const response = await api.get('/users/profile');
   return response.data;
 };
 
-// ✅ (Optional) Update password
+// ✅ Update password
 export const updatePassword = async (passwordData) => {
   const response = await api.put('/users/update-password', passwordData);
   return response.data;
 };
 
-// 🔒 Request interceptor to add auth token
+// 🔒 Interceptors stay the same
 api.interceptors.request.use(
   (config) => {
-    console.log(`Making API request to: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
     const token = localStorage.getItem('token');
-    console.log('API Request - Token found:', token ? 'Yes' : 'No');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-      console.log('API Request - Authorization header set');
-    } else {
-      console.log('API Request - No token in localStorage');
-    }
-
-    if (config.data && !(config.data instanceof FormData)) {
-      console.log('Request data:', config.data);
-    }
-
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
-  (error) => {
-    console.error('API Request interceptor error:', error);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// 🧩 Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => {
-    console.log(`API response from: ${response.config.url}`, response.data);
-    return response;
-  },
+  (response) => response,
   (error) => {
-    console.error(`API error from: ${error.config?.url}`, error.response?.data || error.message);
     if (error.response?.status === 401) {
-      // Token expired or invalid
       localStorage.removeItem('token');
       window.location.href = '/';
     }
@@ -79,19 +54,15 @@ api.interceptors.response.use(
   }
 );
 
-// ✅ -------------------- BOOKINGS API --------------------
-
-// Update booking status (confirm, cancel, refund)
+// ✅ BOOKINGS API
 export const updateBookingStatus = async ({ bookingId, status }) => {
-  const response = await api.put(`/api/bookings/${bookingId}`, { status });
+  const response = await api.put(`/bookings/${bookingId}`, { status });
   return response.data;
 };
 
-// Get all bookings (admin only or user-specific)
 export const fetchAllBookings = async () => {
-  const response = await api.get('/api/bookings');
+  const response = await api.get('/bookings');
   return response.data;
 };
-
 
 export default api;
