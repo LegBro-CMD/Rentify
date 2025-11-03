@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       if (token) {
         try {
-          const response = await api.get('/api/auth/me');
+          const response = await api.get('/auth/me');
           if (response.data.success) {
             setUser(response.data.data.user);
           } else {
