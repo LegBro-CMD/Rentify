@@ -33,12 +33,14 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // CORS configuration - MUST be before routes
+if (process.env.NODE_ENV !=="production") {
 app.use(cors({
   origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+}
 
 // Body parsing middleware - MUST be before routes
 app.use(express.json({ limit: '10mb' }));
@@ -110,20 +112,19 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.get("/", (req, res) => {
-  res.send("✅ Rentify API is running successfully!");
-});
-
-// Serve frontend build in production
+// Serve frontend
 if (process.env.NODE_ENV === 'production') {
-  const buildPath = path.join(__dirname, '../frontend/build');
-  app.use(express.static(buildPath));
+  const __dirname1 = path.resolve();
+  app.use(express.static(path.join(__dirname1, '../frontend/build')));
 
   app.get('*', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
+    res.sendFile(path.resolve(__dirname1, '../frontend', 'build', 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('✅ Rentify API is running successfully!');
   });
 }
-
 
 const PORT = process.env.PORT || 5000;
 
