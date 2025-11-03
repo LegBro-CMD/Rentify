@@ -31,11 +31,21 @@ app.use(
         connectSrc: [
           "'self'",
           "https://rentify-m636.onrender.com", // ✅ Allow API calls to your Render backend
-          "https://api.render.com", // optional, for Render internal calls
+          "https://api.render.com",
         ],
         imgSrc: ["'self'", "data:", "https://rentify-m636.onrender.com"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com", // ✅ Allow Google Fonts CSS
+        ],
+        fontSrc: [
+          "'self'",
+          "https://fonts.googleapis.com",
+          "https://fonts.gstatic.com", // ✅ Allow Google Fonts assets
+          "data:",
+        ],
       },
     },
   })
@@ -44,19 +54,32 @@ app.use(
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000 // limit each IP to 1000 requests per windowMs (increased for development)
+  max: 1000, // limit each IP to 1000 requests per windowMs
 });
 app.use(limiter);
 
-// CORS configuration - MUST be before routes
-if (process.env.NODE_ENV !=="production") {
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-}
+// ✅ CORS configuration — works in both development & production
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://rentify-cauy.onrender.com', // ✅ Your frontend (Render)
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
 
 // Body parsing middleware - MUST be before routes
 app.use(express.json({ limit: '10mb' }));
@@ -85,18 +108,18 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes - Make sure these are properly mounted
-app.use('/api/auth', authRoutes);
-app.use('/api/listings', listingRoutes);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/admin', dashboardRoutes);
-app.use('/api/admin', require('./routes/dashboard'));
-app.use('/api/dashboard', require('./routes/dashboard'));
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/favorites', favoriteRoutes);
+app.use('/auth', authRoutes);
+app.use('/listings', listingRoutes);
+app.use('/bookings', bookingRoutes);
+app.use('/upload', uploadRoutes);
+app.use('/admin', adminRoutes);
+app.use('/admin', dashboardRoutes);
+app.use('/admin', require('./routes/dashboard'));
+app.use('/dashboard', require('./routes/dashboard'));
+app.use('/dashboard', dashboardRoutes);
+app.use('/users', userRoutes);
+app.use('/notifications', notificationRoutes);
+app.use('/favorites', favoriteRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/uploads/avatars', express.static(path.join(__dirname, 'uploads/avatars')));
 app.use('/api/bookings', require('./routes/bookings'));
